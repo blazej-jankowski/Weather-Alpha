@@ -1,8 +1,5 @@
 venv/
 .env
-data/
-*.db
-*.sqlite3
 __pycache__/
 *.pyc
 .idea/
