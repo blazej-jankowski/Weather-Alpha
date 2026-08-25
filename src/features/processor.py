@@ -1,0 +1,131 @@
+import sqlite3
+import logging
+import pandas as pd
+import numpy as np
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+class FeaturePipeline:
+    def __init__(self, db_path: str = "data/weather_alpha.db"):
+        self.db_path = db_path
+
+    def _load_raw_data(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Pobiera surowe tabele z bazy SQLite."""
+        with sqlite3.connect(self.db_path) as conn:
+            df_market = pd.read_sql_query("SELECT * FROM market_eua_daily", conn)
+            df_weather = pd.read_sql_query("SELECT * FROM weather_ger_hourly", conn)
+
+        df_market['date'] = pd.to_datetime(df_market['date'])
+        df_market = df_market.sort_values('date').set_index('date')
+
+        df_weather['timestamp'] = pd.to_datetime(df_weather['timestamp'])
+        df_weather = df_weather.sort_values('timestamp').set_index('timestamp')
+
+        return df_market, df_weather
+
+    def _process_weather_daily(self, df_weather: pd.DataFrame) -> pd.DataFrame:
+        """Agreguje dane godzinowe OZE do poziomu dziennego z uwzględnieniem zmienności."""
+        # 1. Suma i średnia generacja w ciągu doby
+        daily_sum = df_weather.resample('D').sum()
+        daily_mean = df_weather.resample('D').mean()
+        daily_std = df_weather.resample('D').std()
+
+        df_daily_weather = pd.DataFrame(index=daily_sum.index)
+        df_daily_weather['wind_daily_sum'] = daily_sum['wind_generation']
+        df_daily_weather['solar_daily_sum'] = daily_sum['solar_generation']
+        df_daily_weather['oze_total_sum'] = daily_sum['wind_generation'] + daily_sum['solar_generation']
+
+        # Zmienność wewnątrzdniowa (intraday volatility)
+        df_daily_weather['wind_intraday_std'] = daily_std['wind_generation']
+        df_daily_weather['oze_mean_mw'] = daily_mean['wind_generation'] + daily_mean['solar_generation']
+
+        return df_daily_weather
+
+    def _handle_weekend_asymmetry(self, df_daily_weather: pd.DataFrame,
+                                  trading_dates: pd.DatetimeIndex) -> pd.DataFrame:
+        """
+        Agreguje generację OZE z weekendu (sobota + niedziela) i przypisuje ją do poniedziałku.
+        Dla pozostałych dni roboczych zachowuje generację z dnia poprzedniego (T-1).
+        """
+        aligned_weather = pd.DataFrame(index=trading_dates)
+
+        # Flaga poniedziałku (dayofweek == 0)
+        is_monday = aligned_weather.index.dayofweek == 0
+
+        # Konstrukcja cech pogodowych przed otwarciem sesji w dniu T
+        # Dla każdego dnia sesyjnego T patrzymy na sumę generacji od poprzedniego zamknięcia
+        oze_prior_session = []
+        oze_std_prior_session = []
+
+        for current_date in trading_dates:
+            if current_date.dayofweek == 0:  # Poniedziałek -> agregacja Piątek, Sobota, Niedziela
+                window_start = current_date - pd.Timedelta(days=3)
+            else:  # Wtorek-Piątek -> tylko dzień poprzedni (T-1)
+                window_start = current_date - pd.Timedelta(days=1)
+
+            window_end = current_date - pd.Timedelta(days=1)
+            subset = df_daily_weather.loc[window_start:window_end]
+
+            oze_prior_session.append(subset['oze_total_sum'].sum())
+            oze_std_prior_session.append(subset['wind_intraday_std'].mean())
+
+        aligned_weather['oze_prior_session_sum'] = oze_prior_session
+        aligned_weather['wind_prior_session_std'] = oze_std_prior_session
+
+        return aligned_weather
+
+    def build_features(self) -> pd.DataFrame:
+        """Główny pipeline generowania cech i zmiennych celu."""
+        logging.info("Wczytywanie surowych tabel z bazy...")
+        df_market, df_weather = self._load_raw_data()
+
+        logging.info("Agregacja godzinowych danych pogodowych...")
+        df_daily_weather = self._process_weather_daily(df_weather)
+
+        logging.info("Mapowanie asymetrii weekendów na dni sesyjne...")
+        aligned_weather = self._handle_weekend_asymmetry(df_daily_weather, df_market.index)
+
+        logging.info("Generowanie cech statystycznych i wskaźników anomalii...")
+        df_features = pd.DataFrame(index=df_market.index)
+
+        # 1. Ceny i zwroty historyczne EUA (Market Lags)
+        df_features['eua_close'] = df_market['close']
+        df_features['eua_return_lag1'] = df_market['close'].pct_change(1)
+        df_features['eua_volatility_5d'] = df_features['eua_return_lag1'].rolling(window=5).std()
+
+        # 2. Cechy pogodowe z poprzedniej sesji / weekendu
+        df_features['oze_prior_sum'] = aligned_weather['oze_prior_session_sum']
+        df_features['wind_prior_std'] = aligned_weather['wind_prior_session_std']
+
+        # 3. Opóźnienia OZE (Lags - T-1, T-2, T-3)
+        df_features['oze_lag1'] = df_features['oze_prior_sum']
+        df_features['oze_lag2'] = df_features['oze_prior_sum'].shift(1)
+        df_features['oze_lag3'] = df_features['oze_prior_sum'].shift(2)
+
+        # 4. Wskaźnik Anomalii OZE (Rolling 14-day Z-Score dla Dunkelflaute)
+        roll_mean_14 = df_features['oze_prior_sum'].rolling(window=14).mean()
+        roll_std_14 = df_features['oze_prior_sum'].rolling(window=14).std()
+        df_features['oze_zscore_14d'] = (df_features['oze_prior_sum'] - roll_mean_14) / roll_std_14
+
+        # 5. Zmienne Celu (Targets pod KROK 3: Modeling)
+        # Zwrot ceny na zamknięciu w horyzoncie T+1 (przyszłość - do predykcji)
+        df_features['target_return_t1'] = df_market['close'].pct_change(1).shift(-1)
+        # Zwrot ceny na zamknięciu w horyzoncie T+2
+        df_features['target_return_t2'] = df_market['close'].pct_change(2).shift(-2)
+        # Binarny skok ceny w T+1 (> +1.5%)
+        df_features['target_spike_15bp'] = (df_features['target_return_t1'] > 0.015).astype(int)
+
+        # Usunięcie początkowych wierszy z NaN powstałych przez rolling i lag
+        # oraz końcowych wierszy z brakiem targetu (shift(-1), shift(-2))
+        df_features_clean = df_features.dropna().copy()
+
+        logging.info(
+            f"Pipeline zakończony. Wygenerowano macierz {df_features_clean.shape[0]} wierszy x {df_features_clean.shape[1]} kolumn.")
+        return df_features_clean
+
+    def save_features_to_db(self, df: pd.DataFrame, table_name: str = "features_daily"):
+        """Zapisuje gotową macierz cech do bazy SQLite."""
+        with sqlite3.connect(self.db_path) as conn:
+            df.to_sql(table_name, conn, if_exists='replace', index=True)
+            logging.info(f"Zapisano tabelę {table_name} do bazy {self.db_path}.")

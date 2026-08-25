@@ -1,0 +1,9 @@
+pandas
+numpy
+yfinance
+entsoe-py
+python-dotenv
+scikit-learn
+matplotlib
+seaborn
+pytest
