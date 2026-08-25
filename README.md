@@ -25,7 +25,7 @@ A quantitative trading research framework and statistical arbitrage pipeline des
 
 ---
 
-## Jak uruchomić projekt (How to run)
+## Reproduction Pipeline
 
 ```bash
 # 1. Install dependencies
