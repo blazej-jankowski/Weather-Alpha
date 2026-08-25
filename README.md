@@ -40,5 +40,5 @@ docker compose up weather-alpha
 ```bash
 pip install -r requirements.txt
 pytest
-python generate_report.py
+python main.py
 ```
