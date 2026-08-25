@@ -1,3 +1,5 @@
+[![Continuous Integration](https://github.com/blazej-jankowski/Weather-Alpha/actions/workflows/ci.yml/badge.svg)](https://github.com/blazej-jankowski/Weather-Alpha/actions/workflows/ci.yml)
+
 # Weather-Alpha: Systematic Carbon Emissions Trading via Renewable Energy Anomalies
 
 A quantitative trading research framework and statistical arbitrage pipeline designed to test the **Dunkelflaute hypothesis** in European energy markets. The model predicts directional pricing spikes in EU Allowance (EUA) carbon futures contracts driven by German wind and solar generation intermittency.
