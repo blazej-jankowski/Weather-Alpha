@@ -9,15 +9,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 
 def main():
-    logging.info("Rozpoczęcie generowania raportu porównawczego...")
+    logging.info("Starting systematic strategy execution and tearsheet generation...")
 
-    # 1. Wczytanie danych i trening modelu
+    # 1. Load data partitions and fit predictive model
     trainer = QuantModelTrainer(db_path="data/weather_alpha.db", split_date="2023-01-01")
     train_df, test_df = trainer.load_data()
     trainer.train_model(train_df)
     results_df = trainer.evaluate_model(test_df)
 
-    # 2. Wyliczenie ważności cech
+    # 2. Compute permutation feature importance
     X_test = test_df[trainer.feature_cols]
     y_test = test_df[trainer.target_col]
     perm = permutation_importance(trainer.model, X_test, y_test, n_repeats=10, random_state=42)
@@ -26,19 +26,19 @@ def main():
         'Importance': perm.importances_mean
     })
 
-    # 3. Uruchomienie symulacji backtestowej
+    # 3. Execute comparative backtesting simulation
     engine = BacktestEngine(initial_capital=100_000.0, transaction_cost_bps=5.0)
     bt_comparison = engine.run_comparison_backtest(results_df, long_threshold=0.60, short_threshold=0.42)
     summary_table = engine.calculate_metrics_summary(bt_comparison)
 
-    # Wyświetlenie tabeli z wynikami w terminalu
+    # Print comparative performance summary to stdout
     print("\n==========================================================================================")
-    print("                     TABELA PORÓWNAWCZA STRATEGII QUANTOWYCH (2023 OOS)                    ")
+    print("                 QUANTITATIVE STRATEGY PERFORMANCE COMPARISON (2023 OOS)                   ")
     print("==========================================================================================")
     print(summary_table.to_string())
     print("==========================================================================================\n")
 
-    # 4. Generowanie i zapisanie pliku PNG z wykresami
+    # 4. Generate and persist comprehensive tearsheet PNG
     visualizer = PerformanceVisualizer(output_dir="reports")
     visualizer.generate_comparison_tearsheet(bt_comparison, importance_df,
                                              output_name="performance_comparison_tearsheet.png")

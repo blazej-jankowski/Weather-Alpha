@@ -27,7 +27,7 @@ class QuantModelTrainer:
         self.model = None
 
     def load_data(self) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Wczytuje cechy i dzieli je chronologicznie na zbiór treningowy i testowy."""
+        """Loads feature matrix and performs chronological train/test split."""
         with sqlite3.connect(self.db_path) as conn:
             df = pd.read_sql_query("SELECT * FROM features_daily", conn)
 
@@ -38,14 +38,14 @@ class QuantModelTrainer:
         test_df = df.loc[df.index >= self.split_date].copy()
 
         logging.info(
-            f"Zbiór treningowy (In-Sample): {len(train_df)} wierszy ({train_df.index.min().date()} do {train_df.index.max().date()})")
+            f"In-Sample training set: {len(train_df)} rows ({train_df.index.min().date()} to {train_df.index.max().date()})")
         logging.info(
-            f"Zbiór testowy (Out-of-Sample): {len(test_df)} wierszy ({test_df.index.min().date()} do {test_df.index.max().date()})")
+            f"Out-of-Sample test set: {len(test_df)} rows ({test_df.index.min().date()} to {test_df.index.max().date()})")
 
         return train_df, test_df
 
     def train_model(self, train_df: pd.DataFrame) -> HistGradientBoostingClassifier:
-        """Trenuje model Gradient Boosting z regularyzacją przeciw overfittingowi."""
+        """Trains Gradient Boosting Classifier with regularization against overfitting."""
         X_train = train_df[self.feature_cols]
         y_train = train_df[self.target_col]
 
@@ -58,38 +58,38 @@ class QuantModelTrainer:
         )
 
         self.model.fit(X_train, y_train)
-        logging.info("Model Gradient Boosting wytrenowany pomyślnie.")
+        logging.info("Gradient Boosting model trained successfully.")
         return self.model
 
     def evaluate_model(self, test_df: pd.DataFrame) -> pd.DataFrame:
-        """Ocenia predykcje na próbie testowej Out-of-Sample (2023)."""
+        """Evaluates predictions on the Out-of-Sample test set (2023)."""
         X_test = test_df[self.feature_cols]
         y_test = test_df[self.target_col]
 
-        # Predykcja prawdopodobieństwa skoku ceny
+        # Predicted price spike probabilities
         y_prob = self.model.predict_proba(X_test)[:, 1]
         y_pred = (y_prob > 0.5).astype(int)
 
         auc = roc_auc_score(y_test, y_prob)
         print("\n==================================================")
-        print("          WYNIKI OUT-OF-SAMPLE (ROK 2023)         ")
+        print("          OUT-OF-SAMPLE RESULTS (YEAR 2023)       ")
         print("==================================================")
         print(f"ROC-AUC Score: {auc:.4f}")
 
-        print("\n--- RAPORT KLASYFIKACJI ---")
+        print("\n--- CLASSIFICATION REPORT ---")
         print(classification_report(y_test, y_pred, digits=4))
 
-        # Permutation Feature Importance (dokładniejsza metoda oceny ważności cech)
+        # Permutation Feature Importance (robust evaluation of feature relevance)
         perm_importance = permutation_importance(self.model, X_test, y_test, n_repeats=10, random_state=42)
         importance_df = pd.DataFrame({
             'Feature': self.feature_cols,
             'Importance': perm_importance.importances_mean
         }).sort_values('Importance', ascending=False)
 
-        print("\n--- WAŻNOŚĆ CECH (Permutation Importance) ---")
+        print("\n--- FEATURE IMPORTANCE (Permutation Importance) ---")
         print(importance_df.to_string(index=False))
 
-        # Zapis predykcji pod silnik backtestingu (Krok 4)
+        # Attach predictions for downstream backtest engine
         results_df = test_df.copy()
         results_df['signal_prob'] = y_prob
         results_df['signal_binary'] = y_pred

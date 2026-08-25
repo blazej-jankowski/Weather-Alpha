@@ -11,7 +11,7 @@ class DatabaseManager:
         self._init_db()
 
     def _init_db(self):
-        """Tworzy tabele, jeśli nie istnieją."""
+        """Initializes database schema and creates raw tables if they do not exist."""
         query_market = """
         CREATE TABLE IF NOT EXISTS market_eua_daily (
             date TEXT PRIMARY KEY,
@@ -33,14 +33,14 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute(query_market)
             cursor.execute(query_weather)
-            logging.info("Inicjalizacja bazy danych zakończona.")
+            logging.info("Database schema initialization completed.")
 
     def save_dataframe(self, df: pd.DataFrame, table_name: str):
-        """Zapisuje DataFrame do bazy SQLite."""
+        """Persists a pandas DataFrame into the specified SQLite table."""
         if df.empty:
-            logging.warning(f"Brak danych do zapisu w tabeli {table_name}.")
+            logging.warning(f"No data available to persist in table '{table_name}'.")
             return
 
         with sqlite3.connect(self.db_path) as conn:
             df.to_sql(table_name, conn, if_exists='replace', index=True)
-            logging.info(f"Zapisano {len(df)} wierszy do tabeli {table_name}.")
+            logging.info(f"Persisted {len(df)} records into table '{table_name}'.")

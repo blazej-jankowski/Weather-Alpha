@@ -17,21 +17,21 @@ class BacktestEngine:
             short_threshold: float = 0.42
     ) -> pd.DataFrame:
         """
-        Symuluje jednocześnie:
+        Simulates three distinct strategies concurrently:
         1. Benchmark (Buy & Hold)
         2. Weather-Alpha (High-Conviction Long-Only)
         3. Weather-Alpha (Long/Short Market-Neutral)
         """
         bt = df_results.copy()
 
-        # --- 1. STRATEGIA LONG-ONLY ---
+        # --- 1. LONG-ONLY STRATEGY ---
         bt['pos_long_only'] = (bt['signal_prob'] >= long_threshold).astype(int)
         bt['trades_long_only'] = bt['pos_long_only'].diff().abs().fillna(bt['pos_long_only'])
         bt['cost_long_only'] = bt['trades_long_only'] * self.cost_pct
         bt['ret_long_only'] = (bt['pos_long_only'] * bt['target_return_t1']) - bt['cost_long_only']
         bt['equity_long_only'] = self.initial_capital * (1 + bt['ret_long_only']).cumprod()
 
-        # --- 2. STRATEGIA LONG/SHORT ---
+        # --- 2. LONG/SHORT STRATEGY ---
         pos_ls = np.zeros(len(bt), dtype=int)
         for i in range(len(bt)):
             prob = bt['signal_prob'].iloc[i]
@@ -54,7 +54,7 @@ class BacktestEngine:
         return bt
 
     def calculate_metrics_summary(self, bt: pd.DataFrame) -> pd.DataFrame:
-        """Kalkuluje porównawczą tabelę metryk dla wszystkich trzech podejść."""
+        """Computes comparative performance metrics across all three regimes."""
         ann_factor = 252
         total_days = len(bt)
 

@@ -15,11 +15,11 @@ class PerformanceVisualizer:
         importance_df: pd.DataFrame,
         output_name: str = "performance_comparison_tearsheet.png"
     ):
-        """Generuje 3-panelowy raport porównujący Long-Only vs Long/Short vs Benchmark."""
+        """Generates a 3-panel tearsheet comparing Long-Only vs Long/Short vs Benchmark."""
         fig, axes = plt.subplots(3, 1, figsize=(12, 14), gridspec_kw={'height_ratios': [2, 1, 1.2]})
         fig.suptitle("Weather-Alpha: Systematic Carbon Trading Strategy Analysis (2023 Out-of-Sample)", fontsize=13, fontweight='bold', y=0.94)
 
-        # 1. EQUITY CURVE (Krzywa kapitału dla 3 wariantów)
+        # 1. CUMULATIVE EQUITY (Portfolio value across all 3 variants)
         ax1 = axes[0]
         ax1.plot(bt_df.index, bt_df['equity_long_only'], label='Weather-Alpha (High-Conviction Long-Only > 0.60)', color='#1f77b4', linewidth=2.2)
         ax1.plot(bt_df.index, bt_df['equity_long_short'], label='Weather-Alpha (Long/Short Asymmetric)', color='#9467bd', linewidth=1.8, linestyle='-.')
@@ -29,7 +29,7 @@ class PerformanceVisualizer:
         ax1.legend(loc='upper left', frameon=True)
         ax1.grid(True, alpha=0.3)
 
-        # 2. UNDERWATER DRAWDOWN (Wykres obsunięcia kapitału)
+        # 2. UNDERWATER DRAWDOWN (Capital drawdown and exposure risk)
         ax2 = axes[1]
         peak_lo = bt_df['equity_long_only'].cummax()
         dd_lo = (bt_df['equity_long_only'] - peak_lo) / peak_lo * 100
@@ -49,7 +49,7 @@ class PerformanceVisualizer:
         ax2.legend(loc='lower left', frameon=True)
         ax2.grid(True, alpha=0.3)
 
-        # 3. FEATURE IMPORTANCE (Ważność zmiennych w modelu)
+        # 3. FEATURE IMPORTANCE (Permutation feature ranking)
         ax3 = axes[2]
         sorted_imp = importance_df.sort_values('Importance', ascending=True)
         ax3.barh(sorted_imp['Feature'], sorted_imp['Importance'], color='#2ca02c', alpha=0.85)
@@ -61,4 +61,4 @@ class PerformanceVisualizer:
         save_path = os.path.join(self.output_dir, output_name)
         plt.savefig(save_path, dpi=300)
         plt.close()
-        print(f"\n[INFO] Zapisano wykres do: {save_path}")
+        print(f"\n[INFO] Saved performance tearsheet to: {save_path}")
