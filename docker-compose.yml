@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  weather-alpha:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+    environment:
+      - ENTSOE_API_KEY=${ENTSOE_API_KEY}
+    command: python generate_report.py
+
+  test:
+    build: .
+    volumes:
+      - ./data:/app/data
+    command: pytest

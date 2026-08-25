@@ -25,16 +25,20 @@ A quantitative trading research framework and statistical arbitrage pipeline des
 
 ---
 
-## Reproduction Pipeline
+## 🚀 Reproduction Pipeline
 
+**Option 1: Docker (Recommended)**
 ```bash
-# 1. Install dependencies
+# Run test suite in isolated container
+docker compose run test
+
+# Execute end-to-end pipeline and generate tear sheet
+docker compose up weather-alpha
+```
+
+**Option 2: Local Python Environment**
+```bash
 pip install -r requirements.txt
-
-# 2. Run unit test suite
 pytest
-
-# 3. Execute end-to-end pipeline and generate tear sheet
-python run_ingestion.py
-python run_features.py
 python generate_report.py
+```
